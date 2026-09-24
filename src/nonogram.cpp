@@ -139,7 +139,8 @@ std::optional<PuzzleInfo> parse_non_file_with_info(const std::string& content) {
         return std::nullopt;
     }
     if ((int)puzzle.row_descriptions.size() != height || 
-        (int)puzzle.col_descriptions.size() != width) {
+        (int)puzzle.col_descriptions.size() != width ||
+        row_count != height || col_count != width) {
         return std::nullopt;
     }
     
@@ -1032,6 +1033,26 @@ SolverResult Solver::solve() {
     auto end = std::chrono::high_resolution_clock::now();
     result.solve_time_ms = std::chrono::duration<double, std::milli>(end - start).count();
     
+    return result;
+}
+
+SolverResult Solver::solve_line_logic() {
+    start_time_ = std::chrono::steady_clock::now();
+    timed_out_ = false;
+    auto start = std::chrono::high_resolution_clock::now();
+    const bool consistent = full_settle();
+    SolverResult result{};
+    result.grid = grid_;
+    result.width = width_;
+    result.height = height_;
+    result.unknowns = count_unknowns();
+    result.timed_out = timed_out_;
+    result.is_solved = consistent && !timed_out_ && is_solved();
+    result.is_unique = result.is_solved;
+    result.solver_level = timed_out_ ? "timeout" : !consistent ? "contradiction" :
+                          result.is_solved ? "simple" : "partial";
+    auto end = std::chrono::high_resolution_clock::now();
+    result.solve_time_ms = std::chrono::duration<double, std::milli>(end - start).count();
     return result;
 }
 

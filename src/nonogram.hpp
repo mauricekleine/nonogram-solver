@@ -113,6 +113,9 @@ public:
     
     // Solve the puzzle, returns result
     SolverResult solve();
+
+    // Apply only line-by-line Settle/FullSettle (no 2-SAT or guessing).
+    SolverResult solve_line_logic();
     
     // Get current grid state
     const std::vector<Pixel>& grid() const { return grid_; }

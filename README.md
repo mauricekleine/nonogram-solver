@@ -1,85 +1,51 @@
 # Nonogram Solver
 
-Fast nonogram solver combining constraint propagation with parallel SAT solving. Solves 159 puzzles including adversarial cases like "Domino Logic" series.
+C++17 nonogram solver combining line constraint propagation with bundled Glucose SAT solving. It accepts `.non` puzzles and can check whether a puzzle has exactly one solution.
 
-![Viewer screenshot](screenshot.png)
-
-## Quick Start
+## Build
 
 ```bash
-# Build
-mkdir build && cd build
-cmake .. && make -j
-
-# Solve a puzzle (recommended: hybrid solver)
-./nonogram_hybrid puzzle.non
-
-# Batch benchmark
-./nonogram_bench puzzles_dir/ results.json
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j4
+python3 tests/test_check_unique.py
 ```
 
-## Solvers
+Requires CMake 3.14+, a C++17 compiler, zlib, and pthreads. No external SAT executable is needed for `nonogram_hybrid` or `nonogram_bench`.
 
-### `nonogram_hybrid` (Recommended)
+## Solve and check uniqueness
 
-**Propagation + Glucose-Syrup parallel SAT solver**
-
-- Self-contained: no external dependencies
-- Best performance on multi-core systems
-- 3-5x faster than external solvers on hard puzzles
-
-```
-| Puzzle | Size   | External SAT | Hybrid (Glucose) | Speedup |
-|--------|--------|--------------|------------------|---------|
-| 10088  | 52x63  | 10.9s        | 3.7s             | 2.95x   |
-| 18297  | 36x42  | 23.2s        | 4.8s             | 4.87x   |
+```bash
+./build/nonogram_hybrid webpbn_puzzles/1.non
+./build/nonogram_hybrid --check-unique webpbn_puzzles/1.non
+printf '%s\n' '{"rows":[[1],[1]],"columns":[[1],[1]]}' | ./build/nonogram_hybrid --check-unique -
 ```
 
-### `nonogram_solver` (Legacy)
+The check command writes one JSON object to stdout:
 
-Uses external SAT solvers (Kissat/CryptoMiniSat). Requires them installed.
+```json
+{"solved":true,"unique":false,"lineSolvable":false,"solution":"0110","timeMs":0.1}
+```
+
+`solution` is a row-major string of `0` (white) and `1` (black), present only when solved. `lineSolvable` means Settle/FullSettle alone determined every cell; it excludes 2-SAT implications and search. A fully settled grid is unique. Otherwise the solver finds one solution with SAT, blocks that exact grid, and solves again. A second solution makes `unique` false; UNSAT makes it true. An unsatisfiable puzzle reports `solved: false`, `unique: false`, and no `solution`.
+
+For stdin JSON, provide exactly `rows` and `columns` arrays of clue arrays. `[]` and `[0]` both mean an empty line. Malformed or impossible clues exit with an error on stderr. For `.non` files, use a path instead of `-`.
+
+## Batch benchmark
+
+```bash
+./build/nonogram_bench webpbn_puzzles results.json
+python3 tools/audit_webpbn.py --timeout 30
+```
+
+`nonogram_bench` uses the same propagation and Glucose SAT check and reports the verified `isUnique` and `lineSolvable` fields for each puzzle. The audit script checks all bundled `.non` files with a per-puzzle timeout and reports counts and any exceptions.
 
 ## Algorithm
 
-**Phase 1: Constraint Propagation**
+1. `Settle` finds cells shared by every valid placement in each line. `FullSettle` alternates rows and columns to a fixed point.
+2. If cells remain unknown, Glucose encodes row and column clues as SAT constraints and finds a complete grid.
+3. For uniqueness, one clause excludes the found grid and a second SAT run checks whether any different grid exists.
 
-- Line-by-line propagation from [Batenburg & Kosters 2009](https://liacs.leidenuniv.nl/~kosterswa/pbn/icga09.pdf)
-- `Settle`: find cells that must be black/white in all valid line placements
-- `FullSettle`: iterate rows/columns until fixpoint
-- 2-SAT for global implications across lines
-- Most puzzles solve here in <100ms
-
-**Phase 2: SAT Solving** (for hard puzzles)
-
-When propagation stalls, encode remaining unknowns as SAT:
-
-```
-Variables: p[r][c] = pixel is black, s[segment][pos] = segment starts at position
-Constraints:
-  - Each segment starts at exactly one valid position
-  - Pixel black ↔ covered by some segment
-  - Sequential counter AMO encoding (O(n) clauses)
-  - Symmetry breaking for symmetric puzzles
-```
-
-Uses **Glucose-Syrup** parallel CDCL solver (bundled, competition-winning).
-
-## Results
-
-```
-159/159 puzzles solved (100%)
-Hardest: "November 19, 1863" (65x100) - ~2 min
-Most: <100ms via propagation alone
-```
-
-## Dependencies
-
-- C++17 compiler
-- CMake 3.14+
-- zlib (for Glucose)
-- pthreads
-
-No external SAT solver needed for `nonogram_hybrid`.
+The legacy `nonogram_solver` executable uses external SAT solvers. `nonogram_verify` runs the original propagation verification suite.
 
 ## Viewer
 
@@ -90,7 +56,6 @@ python3 -m http.server 8080
 
 ## References
 
-- Batenburg & Kosters. *A Discrete Tomography Approach to Japanese Puzzles*. ICGA 2009.
-- [Glucose SAT Solver](https://github.com/audemard/glucose) - bundled CDCL solver
-- [webpbn.com](https://webpbn.com) - puzzle database
-- [nonogram-db](https://github.com/mikix/nonogram-db) - puzzle format spec
+- [Batenburg & Kosters, *A Discrete Tomography Approach to Japanese Puzzles* (2009)](https://liacs.leidenuniv.nl/~kosterswa/pbn/icga09.pdf)
+- [Glucose SAT Solver](https://github.com/audemard/glucose)
+- [nonogram-db `.non` format](https://github.com/mikix/nonogram-db)
