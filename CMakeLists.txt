@@ -71,7 +71,8 @@ target_link_libraries(nonogram_solver PRIVATE nonogram_core Threads::Threads)
 add_executable(nonogram_bench
     src/fast_benchmark.cpp
 )
-target_link_libraries(nonogram_bench PRIVATE nonogram_core Threads::Threads)
+target_include_directories(nonogram_bench PRIVATE ${GLUCOSE_DIR})
+target_link_libraries(nonogram_bench PRIVATE nonogram_core glucose)
 
 # Verification test suite
 add_executable(nonogram_verify
